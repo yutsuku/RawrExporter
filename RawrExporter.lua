@@ -347,6 +347,8 @@ do
 		if type then
 			type = Item.Stats.ToValue(type)
 			Item.Sockets.Stats.Values[type] = value
+			module:print(type)
+			module:print(value)
 			Item.Sockets.Stats.Size = Item.Sockets.Stats.Size + 1
 		end
 		return value, type
@@ -537,19 +539,19 @@ do
 	Item.GetStat = {}
 	
 	Item.GetStat.Armor = function(text)
-		local _, _, value = strfind(text, '(%d+) Armor')
+		local _, _, value = strfind(text, '^(%d+) Armor')
 		return value
 	end
 	Item.GetStat.Stamina = function(text)
-		local _, _, value = strfind(text, '%+(%d+) Stamina')
+		local _, _, value = strfind(text, '^%+(%d+) Stamina')
 		return value
 	end
 	Item.GetStat.Agility = function(text)
-		local _, _, value = strfind(text, '%+(%d+) Agility')
+		local _, _, value = strfind(text, '^%+(%d+) Agility')
 		return value
 	end
 	Item.GetStat.AttackPower = function(text)
-		local _, _, value = strfind(text, '%+(%d+) Attack Power')
+		local _, _, value = strfind(text, '^%+(%d+) Attack Power')
 		if value then
 			return value
 		end
