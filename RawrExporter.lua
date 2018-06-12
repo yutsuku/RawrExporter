@@ -35,7 +35,7 @@ do
 end
 
 do
-	local main_frame = CreateFrame('Frame', 'RawrExporter', UIParent)
+	local main_frame = CreateFrame('Frame', nil, UIParent)
 	module.main_frame = main_frame
 	main_frame:Hide()
 
@@ -53,11 +53,12 @@ do
 	main_frame:SetClampedToScreen(true)
 	main_frame:EnableMouse(true)
 	main_frame:SetMovable(true)
+	main_frame:RegisterForDrag('LeftButton')
 	main_frame:SetScript('OnDragStart', function(self)
-		this:StartMoving()
+		self:StartMoving()
 	end)
 	main_frame:SetScript('OnDragStop', function(self)
-		this:StopMovingOrSizing()
+		self:StopMovingOrSizing()
 	end)
 	
 	do
@@ -469,10 +470,11 @@ do
 				Item.Stats.Values.Armor = Item.Stats.Values.Armor or Item.GetStat.Armor(Left)
 				Item.Stats.Values.Stamina = Item.Stats.Values.Stamina or Item.GetStat.Stamina(Left)
 				Item.Stats.Values.Agility = Item.Stats.Values.Agility or Item.GetStat.Agility(Left)
+				Item.Stats.Values.Strength = Item.Stats.Values.Strength or Item.GetStat.Strength(Left)
 				if Item.Stats.Values.AttackPower and Item.GetStat.AttackPower(Left) then
 					Item.Stats.Values.AttackPower = Item.Stats.Values.AttackPower + Item.GetStat.AttackPower(Left)
 				else
-					Item.Stats.Values.AttackPower = Item.GetStat.AttackPower(Left)
+					Item.Stats.Values.AttackPower = Item.GetStat.AttackPower(Left) or Item.Stats.Values.AttackPower
 				end
 				Item.Stats.Values.CritRating = Item.Stats.Values.CritRating or Item.GetStat.CritRating(Left)
 				Item.Stats.Values.HitRating = Item.Stats.Values.HitRating or Item.GetStat.HitRating(Left)
@@ -565,6 +567,10 @@ do
 		local _, _, value = strfind(text, '^%+(%d+) Stamina')
 		return value
 	end
+	Item.GetStat.Strength = function(text)
+		local _, _, value = strfind(text, '^%+(%d+) Strength')
+		return value
+	end
 	Item.GetStat.Agility = function(text)
 		local _, _, value = strfind(text, '^%+(%d+) Agility')
 		return value
@@ -599,6 +605,10 @@ do
 	end
 	Item.GetStat.Resilience = function(text)
 		local _, _, value = strfind(text, 'Equip: Increases your resilience rating by (%d+)%.')
+		if value then
+			return value
+		end
+		local _, _, value = strfind(text, 'Equip: Improves your resilience rating by (%d+)%.')
 		return value
 	end
 	Item.GetStat.ArmorPenetration = function(text)
