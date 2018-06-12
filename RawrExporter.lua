@@ -95,7 +95,7 @@ do
 		inputBox:SetPoint('LEFT', module.main_frame.label_itemID, 'RIGHT', 10, 0)
 		inputBox:SetWidth(64)
 		inputBox:SetHeight(24)
-		inputBox:SetMaxLetters(13)
+		inputBox:SetMaxLetters(64)
 		inputBox:SetMultiLine(false)
 		inputBox:EnableMouse(true)
 		inputBox:SetAutoFocus(false)
@@ -137,7 +137,7 @@ do
 		
 		button:SetScript('OnClick', function(self)
 			module.main_frame.inputBox:ClearFocus()
-			module.main_frame.inputBox:SetText(tonumber(module.main_frame.inputBox:GetText()))
+			--module.main_frame.inputBox:SetText(tonumber(module.main_frame.inputBox:GetText()))
 			if not GetItemInfo(module.main_frame.inputBox:GetText()) then
 				module.main_frame.Scroll.EditBox:SetText('Fetching item from server')
 				module.req = {
@@ -302,6 +302,7 @@ do
 	Item.MaxDamage = nil
 	Item.SetName = nil
 	Item.Speed = nil
+	Item.Unique = nil
 	
 	Item.Reset = function()
 		Item.Stats.Reset()
@@ -317,6 +318,7 @@ do
 		Item.MaxDamage = nil
 		Item.SetName = nil
 		Item.Speed = nil
+		Item.Unique = nil
 	end
 	
 	Item.Sockets = {}
@@ -347,8 +349,6 @@ do
 		if type then
 			type = Item.Stats.ToValue(type)
 			Item.Sockets.Stats.Values[type] = value
-			module:print(type)
-			module:print(value)
 			Item.Sockets.Stats.Size = Item.Sockets.Stats.Size + 1
 		end
 		return value, type
@@ -397,6 +397,11 @@ do
 		data = data..' </Sockets>\n'
 		
 		data = data..' <Quality>'..Item.Quality..'</Quality>\n'
+		
+		if Item.SetName then
+			data = data..' <SetName>'..Item.SetName..'</SetName>\n'
+		end
+		
 		data = data..' <Type>'..Item.Type..'</Type>\n'
 		
 		if Item.MinDamage then
@@ -408,8 +413,11 @@ do
 		if Item.Speed then
 			data = data..' <Speed>'..Item.Speed..'</Speed>\n'
 		end
+		if Item.Unique then
+			data = data..' <Unique>true</Unique>\n'
+		end
 		
-		data = data..'</item>\n'
+		data = data..'</Item>\n'
 		
 		return data
 	end
@@ -439,7 +447,10 @@ do
 		
 		if type == 'Weapon' then
 			Item.Type = Item.GetWeaponType(subType)
+		elseif type == 'Back' then
+			Item.Type = 'None'
 		else
+			if subType == 'Miscellaneous' then subType = 'None' end
 			Item.Type = subType
 		end
 		
@@ -458,7 +469,11 @@ do
 				Item.Stats.Values.Armor = Item.Stats.Values.Armor or Item.GetStat.Armor(Left)
 				Item.Stats.Values.Stamina = Item.Stats.Values.Stamina or Item.GetStat.Stamina(Left)
 				Item.Stats.Values.Agility = Item.Stats.Values.Agility or Item.GetStat.Agility(Left)
-				Item.Stats.Values.AttackPower = Item.Stats.Values.AttackPower or Item.GetStat.AttackPower(Left)
+				if Item.Stats.Values.AttackPower and Item.GetStat.AttackPower(Left) then
+					Item.Stats.Values.AttackPower = Item.Stats.Values.AttackPower + Item.GetStat.AttackPower(Left)
+				else
+					Item.Stats.Values.AttackPower = Item.GetStat.AttackPower(Left)
+				end
 				Item.Stats.Values.CritRating = Item.Stats.Values.CritRating or Item.GetStat.CritRating(Left)
 				Item.Stats.Values.HitRating = Item.Stats.Values.HitRating or Item.GetStat.HitRating(Left)
 				Item.Stats.Values.Resilience = Item.Stats.Values.Resilience or Item.GetStat.Resilience(Left)
@@ -477,6 +492,10 @@ do
 				local _,_, value = strfind(Left, '(.+) %(%d/%d%)')
 				if value then
 					Item.SetName = value
+				end
+				
+				if Left == 'Unique' then
+					Item.Unique = true
 				end
 				
 			end
@@ -556,7 +575,19 @@ do
 			return value
 		end
 		local _, _, value = strfind(text, 'Equip: Increases attack power by (%d+)%.')
-		return value
+		if value then
+			return value
+		end
+		local _, _, value, valueTime, minutes, seconds = strfind(text, 'Use: Increases attack power by (%d+) for (%d+) sec%. %((%d+) Min (%d+) Secs Cooldown%)')
+		if seconds then
+			local t = (minutes * 60) + seconds
+			return value * valueTime / t
+		end
+		local _, _, value, valueTime, minutes = strfind(text, 'Use: Increases your melee and ranged attack power by (%d+)%.  Effect lasts for (%d+) sec%. %((%d+) Mins Cooldown%)')
+		if minutes then
+			local t = (minutes * 60)
+			return value * valueTime / t
+		end
 	end
 	Item.GetStat.CritRating = function(text)
 		local _, _, value = strfind(text, 'Equip: Improves critical strike rating by (%d+)%.')
