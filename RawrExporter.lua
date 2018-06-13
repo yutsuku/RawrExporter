@@ -35,6 +35,27 @@ do
 end
 
 do
+	
+	module.hooks = {}
+	
+	if Cartographer_InstanceLoot then
+		module.hooks['Cartographer_InstanceLoot'] = {}
+		module.hooks['Cartographer_InstanceLoot'].DropClick = Cartographer_InstanceLoot.DropClick
+		
+		Cartographer_InstanceLoot.DropClick = function(...)
+			if IsShiftKeyDown() and module.main_frame:IsVisible() and not ChatFrameEditBox:IsVisible() then
+				module.main_frame.Scroll.EditBox:ClearFocus()
+				module.main_frame.inputBox:SetText(select(2, ...))
+				module.main_frame.inputBox.button:Click()
+				return
+			end
+			return module.hooks['Cartographer_InstanceLoot'].DropClick(...)
+		end
+		
+	end
+end
+
+do
 	local main_frame = CreateFrame('Frame', nil, UIParent)
 	module.main_frame = main_frame
 	main_frame:Hide()
@@ -106,6 +127,7 @@ do
 		end)
 		inputBox:SetScript('OnEnterPressed', function(self)
 			this:ClearFocus()
+			module.main_frame.inputBox.button:Click()
 		end)
 		
 		inputBox:SetScript('OnEnter', function(self)
@@ -123,6 +145,13 @@ do
 		inputBox:SetScript('OnMouseUp', function(self)
 			local type, id, link = GetCursorInfo()
 			if type and type == 'item' then
+				this:SetText(id)
+				this:ClearFocus()
+				ClearCursor()
+			end
+			if type and type == 'merchant' then
+				id = GetMerchantItemLink(id)
+				id = module:parse_link(id)
 				this:SetText(id)
 				this:ClearFocus()
 				ClearCursor()
@@ -280,14 +309,19 @@ do
 	Item.Stats.Reset = function()
 		Item.Stats.Values = {
 			['Agility'] = nil,
+			['DodgeRating'] = nil,
 			['Stamina'] = nil,
 			['AttackPower'] = nil,
 			['Strength'] = nil,
 			['CritRating'] = nil,
+			['BonusCritMultiplier'] = nil,
+			['BonusSpellCritMultiplier'] = nil,
 			['HitRating'] = nil,
 			['Armor'] = nil,
 			['ArmorPenetration'] = nil,
 			['ExpertiseRating'] = nil,
+			['ParryRating'] = nil,
+			['DefenseRating'] = nil,
 			['HasteRating'] = nil,
 			['Resilience'] = nil,
 		}
@@ -336,7 +370,7 @@ do
 		return Item.Sockets.Slots, Item.Sockets.Stats
 	end
 	Item.Sockets.GetColor = function(text)
-		local _, _, value = strfind(text, '(.+) Socket')
+		local _, _, value = strfind(text, '(%w+) Socket')
 		if value then
 			Item.Sockets.Add(value)
 		end
@@ -448,7 +482,10 @@ do
 		
 		if type == 'Weapon' then
 			Item.Type = Item.GetWeaponType(subType)
-		elseif type == 'Back' then
+		elseif type == 'Gem' then
+			Item.Slot = subType
+			Item.Type = 'None'
+		elseif Item.Slot == 'Back' then
 			Item.Type = 'None'
 		else
 			if subType == 'Miscellaneous' then subType = 'None' end
@@ -468,17 +505,35 @@ do
 				end
 				
 				Item.Stats.Values.Armor = Item.Stats.Values.Armor or Item.GetStat.Armor(Left)
-				Item.Stats.Values.Stamina = Item.Stats.Values.Stamina or Item.GetStat.Stamina(Left)
+				Item.Stats.Values.DefenseRating = Item.Stats.Values.DefenseRating or Item.GetStat.DefenseRating(Left)
+
+				if Item.Stats.Values.DodgeRating and Item.GetStat.DodgeRating(Left) then
+					Item.Stats.Values.DodgeRating = Item.Stats.Values.DodgeRating + Item.GetStat.DodgeRating(Left)
+				else
+					Item.Stats.Values.DodgeRating = Item.GetStat.DodgeRating(Left) or Item.Stats.Values.DodgeRating
+				end
+				
+				if Item.Stats.Values.Stamina and Item.GetStat.Stamina(Left) then
+					Item.Stats.Values.Stamina = Item.Stats.Values.Stamina + Item.GetStat.Stamina(Left)
+				else
+					Item.Stats.Values.Stamina = Item.GetStat.Stamina(Left) or Item.Stats.Values.Stamina
+				end
+	
 				Item.Stats.Values.Agility = Item.Stats.Values.Agility or Item.GetStat.Agility(Left)
 				Item.Stats.Values.Strength = Item.Stats.Values.Strength or Item.GetStat.Strength(Left)
+				
 				if Item.Stats.Values.AttackPower and Item.GetStat.AttackPower(Left) then
 					Item.Stats.Values.AttackPower = Item.Stats.Values.AttackPower + Item.GetStat.AttackPower(Left)
 				else
 					Item.Stats.Values.AttackPower = Item.GetStat.AttackPower(Left) or Item.Stats.Values.AttackPower
 				end
+				
 				Item.Stats.Values.CritRating = Item.Stats.Values.CritRating or Item.GetStat.CritRating(Left)
+				Item.Stats.Values.BonusCritMultiplier = Item.Stats.Values.BonusCritMultiplier or Item.GetStat.BonusCritMultiplier(Left)
+				Item.Stats.Values.BonusSpellCritMultiplier = Item.Stats.Values.BonusSpellCritMultiplier or Item.GetStat.BonusSpellCritMultiplier(Left)
 				Item.Stats.Values.HitRating = Item.Stats.Values.HitRating or Item.GetStat.HitRating(Left)
 				Item.Stats.Values.Resilience = Item.Stats.Values.Resilience or Item.GetStat.Resilience(Left)
+				Item.Stats.Values.ParryRating = Item.Stats.Values.ParryRating or Item.GetStat.ParryRating(Left)
 				Item.Stats.Values.ArmorPenetration = Item.Stats.Values.ArmorPenetration or Item.GetStat.ArmorPenetration(Left)
 				Item.Stats.Values.ExpertiseRating = Item.Stats.Values.ExpertiseRating or Item.GetStat.ExpertiseRating(Left)
 				Item.Stats.Values.HasteRating = Item.Stats.Values.HasteRating or Item.GetStat.HasteRating(Left)
@@ -496,7 +551,8 @@ do
 					Item.SetName = value
 				end
 				
-				if Left == 'Unique' then
+				local _,_, value = strfind(Left, '(Unique)')
+				if value then
 					Item.Unique = true
 				end
 				
@@ -563,20 +619,50 @@ do
 		local _, _, value = strfind(text, '^(%d+) Armor')
 		return value
 	end
-	Item.GetStat.Stamina = function(text)
-		local _, _, value = strfind(text, '^%+(%d+) Stamina')
+	Item.GetStat.DodgeRating = function(text)
+		local _, _, value = strfind(text, 'Equip: Increases your dodge rating by (%d+)%.')
+		if value then
+			return value
+		end
+		local _, _, value, valueTime, minutes = strfind(text, 'Use: Increases dodge rating by (%d+) for (%d+) sec%. %((%d+) Mins Cooldown%)')
+		if minutes then
+			local t = (minutes * 60)
+			return value * valueTime / t
+		end	
+		local _, _, value = strfind(text, '%+(%d+) Dodge Rating')
 		return value
 	end
+	Item.GetStat.DefenseRating = function(text)
+		local _, _, value = strfind(text, 'Equip: Increases defense rating by (%d+)%.')
+		if value then
+			return value
+		end
+		local _, _, value = strfind(text, '%+(%d+) Defense Rating')
+		if value then
+			return value
+		end
+	end
+	Item.GetStat.Stamina = function(text)
+		local _, _, value = strfind(text, '%+(%d+) Stamina')
+		if value then
+			return value
+		end
+		local _, _, value, valueTime, minutes = strfind(text, 'Use: Increases your maximum health by (%d+) for (%d+) sec%. %((%d+) Mins Cooldown%)')
+		if minutes then
+			local t = (minutes * 60)
+			return value * valueTime / t / 10
+		end
+	end
 	Item.GetStat.Strength = function(text)
-		local _, _, value = strfind(text, '^%+(%d+) Strength')
+		local _, _, value = strfind(text, '%+(%d+) Strength')
 		return value
 	end
 	Item.GetStat.Agility = function(text)
-		local _, _, value = strfind(text, '^%+(%d+) Agility')
+		local _, _, value = strfind(text, '%+(%d+) Agility')
 		return value
 	end
 	Item.GetStat.AttackPower = function(text)
-		local _, _, value = strfind(text, '^%+(%d+) Attack Power')
+		local _, _, value = strfind(text, '%+(%d+) Attack Power')
 		if value then
 			return value
 		end
@@ -589,6 +675,11 @@ do
 			local t = (minutes * 60) + seconds
 			return value * valueTime / t
 		end
+		local _, _, value, valueTime, minutes = strfind(text, 'Use: Increases attack power by (%d+) for (%d+) sec%. %((%d+) Mins Cooldown%)')
+		if minutes then
+			local t = (minutes * 60)
+			return value * valueTime / t
+		end
 		local _, _, value, valueTime, minutes = strfind(text, 'Use: Increases your melee and ranged attack power by (%d+)%.  Effect lasts for (%d+) sec%. %((%d+) Mins Cooldown%)')
 		if minutes then
 			local t = (minutes * 60)
@@ -597,10 +688,36 @@ do
 	end
 	Item.GetStat.CritRating = function(text)
 		local _, _, value = strfind(text, 'Equip: Improves critical strike rating by (%d+)%.')
-		return value
+		if value then
+			return value
+		end
+		local _, _, value = strfind(text, '%+(%d+) Critical Strike Rating')
+		if value then
+			return value
+		end
+		local _, _, value = strfind(text, '%+(%d+) Critical Rating')
+		if value then
+			return value
+		end
+	end
+	Item.GetStat.BonusCritMultiplier = function(text)
+		local _, _, value = strfind(text, '(%d+)%% Increased Critical Damage')
+		if value then
+			return value / 100
+		end
+	end
+	Item.GetStat.BonusSpellCritMultiplier = function(text)
+		local _, _, value = strfind(text, '(%d+)%% Increased Critical Damage')
+		if value then
+			return value / 100
+		end
 	end
 	Item.GetStat.HitRating = function(text)
 		local _, _, value = strfind(text, 'Equip: Improves hit rating by (%d+)%.')
+		if value then
+			return value
+		end
+		local _, _, value = strfind(text, '%+(%d+) Hit Rating')
 		return value
 	end
 	Item.GetStat.Resilience = function(text)
@@ -609,19 +726,57 @@ do
 			return value
 		end
 		local _, _, value = strfind(text, 'Equip: Improves your resilience rating by (%d+)%.')
-		return value
+		if value then
+			return value
+		end
+		local _, _, value = strfind(text, '%+(%d+) Resilience Rating')
+		if value then
+			return value
+		end
+	end
+	Item.GetStat.ParryRating = function(text)
+		local _, _, value = strfind(text, 'Equip: Increases your parry rating by (%d+)%.')
+		if value then
+			return value
+		end
+		local _, _, value = strfind(text, '%+(%d+) Parry Rating')
+		if value then
+			return value
+		end
 	end
 	Item.GetStat.ArmorPenetration = function(text)
 		local _, _, value = strfind(text, 'Equip: Increases armor penetration rating by (%d+)%.')
 		return value
 	end
 	Item.GetStat.ExpertiseRating = function(text)
-		local _, _, value = strfind(text, 'Equip: Increases expertise rating by (%d+)%.')
-		return value
+		local _, _, value = strfind(text, 'Equip: Increases your expertise rating by (%d+)%.')
+		if value then
+			return value
+		end
+		_, _, value = strfind(text, 'Equip: Your attacks ignore (%d+) of your opponent\'s armor%.')
+		if value then
+			return value
+		end
+		local _, _, value, valueTime, minutes = strfind(text, 'Use: Your attacks ignore (%d+) of your enemies\' armor for (%d+) sec%. %((%d+) Mins Cooldown%)')
+		if minutes then
+			local t = (minutes * 60)
+			return value * valueTime / t
+		end
 	end
 	Item.GetStat.HasteRating = function(text)
 		local _, _, value = strfind(text, 'Equip: Increases your haste rating by (%d+)%.')
-		return value
+		if value then
+			return value
+		end
+		local _, _, value = strfind(text, 'Equip: Improves haste rating by (%d+)%.')
+		if value then
+			return value
+		end
+		local _, _, value, valueTime, minutes = strfind(text, 'Use: Increases haste rating by (%d+) for (%d+) sec%. %((%d+) Mins Cooldown%)')
+		if minutes then
+			local t = (minutes * 60)
+			return value * valueTime / t
+		end
 	end
 	
 	_G.ItemAPI = Item
